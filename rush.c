@@ -1,35 +1,79 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h> 
 
 #define MAX_WORDS 100
-#define MAX_WORD_LEN 50
+
+char** get_argV(char* line, int* argC) {
+    char **argV = malloc(MAX_WORDS * sizeof(char*));
+    *argC = 0;
+
+    char *token;
+    char *rest = line;
+    while ((token = strsep(&rest, " \t")) != NULL && *argC < MAX_WORDS) {
+        if (strlen(token) > 0) { // Ignore empty tokens
+            argV[*argC] = malloc(strlen(token) + 1);
+            strcpy(argV[*argC], token);
+            (*argC)++;
+        }
+    }
+    return argV;
+}
 
 int main() {
-    while (1) {
+    #ifdef _WIN32
+        system("cls");
+    #else
+        system("clear");
+    #endif
+    while(1){
         char *line = NULL;
         size_t len = 0;
-        printf("Enter a line: ");
+
+        printf("rush> ");
+        fflush(stdout);
         getline(&line, &len, stdin);
+        line[strcspn(line, "\n")] = 0;
 
-        char *words[MAX_WORDS];
-        int word_count = 0;
-
-        char *token;
-        char *rest = line;
-        while ((token = strsep(&rest, " ")) != NULL && word_count < MAX_WORDS) {
-            words[word_count] = malloc(strlen(token) + 1);
-            strcpy(words[word_count], token);
-            word_count++;
-        }
-
-        // Print the words to verify
-        for (int i = 0; i < word_count; i++) {
-            printf("%s\n", words[i]);
-            free(words[i]);
-        }
-
+        int argC;
+        char **argV = get_argV(line, &argC);
         free(line);
-    }
+        // Print words        
+        for (int i = 0; i < argC; i++) {
+            printf("%d %s\n",i, argV[i]);
+        }
+        printf("word_count: %d\n", argC);
+        printf("\n");
+
+        // exit case
+        if(strcmp(argV[0], "exit") == 0){
+            free(argV);
+            printf("\n");
+            break;
+        }
+        // ls case
+        else if(strcmp(argV[0], "ls") == 0){
+            pid_t pid = fork();
+
+            if (pid < 0) {
+                // Fork failed
+                printf("Fork failed.\n");
+            } else if (pid == 0) {
+                // Child process
+                execv("/bin/ls", argV);
+
+                // If execv returns, there was an error
+                printf("execv failed.\n");
+                exit(1);
+            } else {
+                // Parent process
+                int status;
+                waitpid(pid, &status, 0);
+            }
+        }
+
+        printf("\n");
+    }      
     return 0;
 }
