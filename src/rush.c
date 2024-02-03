@@ -22,12 +22,11 @@ char** get_argV(char* line, int* argC) {
     return argV;
 }
 
-int main() {
-    #ifdef _WIN32
-        system("cls");
-    #else
-        system("clear");
-    #endif
+int main(int argc, char *argv[]) {
+    if (argc > 1) {
+        printf("An error has occurred");
+        return 1;
+    }
     char *path[] = {"/bin", "/usr/bin", NULL};
     while(1){
         char *line = NULL;
