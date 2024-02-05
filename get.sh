@@ -1,5 +1,5 @@
 #!/bin/bash
 rm -f src.zip
 rm src/rush
-zip -r src.zip src
+zip -r src.zip src/rush.c src/makefile
 
