@@ -62,7 +62,7 @@ char* redirect(char** args, int argn, int* errs) {
                 args[i + 1] = NULL;
                 break;
             } else {
-                write(STDERR_FILENO, error_message, strlen(error_message)); 
+                // write(STDERR_FILENO, error_message, strlen(error_message)); 
                 *errs = 1;
                 break;
             }
@@ -112,7 +112,6 @@ int main(int argc, char *argv[]) {
     
     // Start the RUSH shell 
     while(1){
-        int errs = 0;
         char *line = NULL;
         size_t len = 0;
 
@@ -215,11 +214,18 @@ int main(int argc, char *argv[]) {
 
             // all other cases
             else{
+                int found = 0;
                 for (Node* node = rushPATH; node != NULL; node = node->next) {
+                    int errs = 0;
+                    char* redirectTo = redirect(argV, argC, &errs);
+                    if (errs > 0) {
+                        break;
+                    }
                     char fullPath[256];
                     snprintf(fullPath, sizeof(fullPath), "%s/%s", node->path, argV[0]); 
                     int result = access(fullPath, X_OK);
                     if (result == 0) {
+                        found = 1;
                         pids[i] = fork();
                         if (pids[i] < 0) {
                             printf("%d %d\n", i, pids[i]);
@@ -227,12 +233,15 @@ int main(int argc, char *argv[]) {
                         }
                         else if (pids[i] == 0) {
                             // Child process
-                            char* redirectTo = redirect(argV, argC, &errs);
-                            if (errs > 0) {
-                                exit(1);
-                            }
 
                             if(redirectTo != NULL) {
+                                FILE *file = fopen(redirectTo, "w");
+                                if (file == NULL) {
+                                    write(STDERR_FILENO, error_message, strlen(error_message)); 
+                                    exit(1);
+                                } else {
+                                    fclose(file);
+                                }
                                 freopen(redirectTo, "w", stdout);
                             }
 
@@ -241,18 +250,24 @@ int main(int argc, char *argv[]) {
                             write(STDERR_FILENO, error_message, strlen(error_message)); 
                             exit(0);
                         }
+                        fflush(stdout);
                     }
                     else{
+                        // parent process
+                        fflush(stdout);
                         continue;
                     }
                 }
-            
+                if (found == 0) {
+                    write(STDERR_FILENO, error_message, strlen(error_message)); 
+                }
             }
+        }
 
-            for (int i = 0; i < numOfCommands; i++) {
-                int status;
-                waitpid(pids[i], &status, 0);
-            }
+        // wait for all the commands to finish
+        for (int i = 0; i < numOfCommands; i++) {
+            int status;
+            waitpid(pids[i], &status, 0);
         }
 
     }
