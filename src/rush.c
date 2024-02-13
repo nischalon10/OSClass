@@ -4,6 +4,8 @@
 #include <sys/types.h> 
 #include <unistd.h>
 #include <ctype.h>
+#include <fcntl.h>
+
 
 #define MAX_WORDS 255
 #define MAX_ARGVS 50
@@ -52,14 +54,15 @@ char** get_words(char* line, int* argC) {
     return argV;
 }
 
-char* redirect(char** args, int argn, int* errs) {
+char* redirect(char** args, int* argn, int* errs) {
     char* redirectTo = NULL;
-    for (int i = 0; i < argn; i++) {
+    for (int i = 0; i < *argn; i++) {
         if (strcmp(args[i], ">") == 0) {
-            if (i + 2 == argn) {
+            if (i + 2 == *argn && i > 0) {
                 redirectTo = args[i + 1];
                 args[i] = NULL;
                 args[i + 1] = NULL;
+                *argn = i;
                 break;
             } else {
                 // write(STDERR_FILENO, error_message, strlen(error_message)); 
@@ -121,6 +124,7 @@ int main(int argc, char *argv[]) {
         
         // If the line is empty, skip it and print the prompt again
         if (line[0] == '\n' || line[0] == '\0') {
+            free(line);
             continue;
         }
         fflush(stdout);
@@ -130,6 +134,7 @@ int main(int argc, char *argv[]) {
         
         // If the line is only whitespace, skip it and print the prompt again
         if (is_only_whitespace(line)) {
+            free(line);
             continue;
         }
 
@@ -215,13 +220,17 @@ int main(int argc, char *argv[]) {
             // all other cases
             else{
                 int found = 0;
+                int errs = 0;
+                char* redirectTo = redirect(argV, &argC, &errs);
+                if (errs > 0) {
+                    write(STDERR_FILENO, error_message, strlen(error_message)); 
+                    continue;
+                }
                 for (Node* node = rushPATH; node != NULL; node = node->next) {
-                    int errs = 0;
-                    char* redirectTo = redirect(argV, argC, &errs);
-                    if (errs > 0) {
-                        break;
-                    }
                     char fullPath[256];
+                    if (strncmp(argV[0], "./", 2) == 0) {
+                        memmove(argV[0], argV[0] + 2, strlen(argV[0]) - 1);
+                    }
                     snprintf(fullPath, sizeof(fullPath), "%s/%s", node->path, argV[0]); 
                     int result = access(fullPath, X_OK);
                     if (result == 0) {
@@ -234,29 +243,43 @@ int main(int argc, char *argv[]) {
                         else if (pids[i] == 0) {
                             // Child process
 
-                            if(redirectTo != NULL) {
-                                FILE *file = fopen(redirectTo, "w");
-                                if (file == NULL) {
+                            // if(redirectTo != NULL) {
+                            //     FILE *file = fopen(redirectTo, "w");
+                            //     if (file == NULL) {
+                            //         write(STDERR_FILENO, error_message, strlen(error_message)); 
+                            //         exit(1);
+                            //     } else {
+                            //         fclose(stdout);
+                            //     }
+                            //     freopen(redirectTo, "w", stdout);
+                            // }
+                            // printf("redirecting file name  %s\n", redirectTo);
+                            if (redirectTo != NULL) {
+                                int fd = open(redirectTo, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+                                if (fd < 0) {
                                     write(STDERR_FILENO, error_message, strlen(error_message)); 
                                     exit(1);
-                                } else {
-                                    fclose(file);
                                 }
-                                freopen(redirectTo, "w", stdout);
+                                // printf("redirecting to %s\n", redirectTo);
+                                dup2(fd, STDOUT_FILENO);
                             }
 
                             execv(fullPath, argV);
+
                             // If execv returns, there was an error
                             write(STDERR_FILENO, error_message, strlen(error_message)); 
-                            exit(0);
+                            exit(1);
                         }
                         fflush(stdout);
                     }
                     else{
                         // parent process
                         fflush(stdout);
+                        if (found == 1) {
+                            break;
+                        }
                         continue;
-                    }
+                    } 
                 }
                 if (found == 0) {
                     write(STDERR_FILENO, error_message, strlen(error_message)); 
